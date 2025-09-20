@@ -90,7 +90,7 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
       };
       processAnalysis();
     }
-  }, [recorder.audioBlob, recorder.isRecording, userId, practiceMode, recorder.transcript, recorder.duration]);
+  }, [recorder.audioBlob, recorder.isRecording, isProcessing, userId, practiceMode, recorder.transcript, recorder.duration, toast, onAnalysisComplete]);
 
   const handleRecordToggle = async () => {
     if (recorder.isRecording) {

@@ -81,8 +81,15 @@ export function useAudioRecorder() {
         
         recognition.onerror = (event: any) => {
           console.error('Speech recognition error:', event.error);
-          if (event.error === 'no-speech') {
-            // Continue silently for no-speech errors
+          if (event.error === 'no-speech' || event.error === 'network') {
+            // Continue silently for no-speech or network errors - these are common and non-fatal
+            return;
+          }
+          if (event.error === 'not-allowed') {
+            setState(prev => ({ 
+              ...prev, 
+              error: 'Microphone access denied. Please enable microphone permissions and try again.' 
+            }));
             return;
           }
           setState(prev => ({ 
@@ -167,10 +174,10 @@ export function useAudioRecorder() {
         error: "Failed to start recording. Please check microphone permissions." 
       }));
     }
-  }, [state.isRecording]);
+  }, []);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && state.isRecording) {
+    if (mediaRecorderRef.current && isRecordingRef.current) {
       mediaRecorderRef.current.stop();
       
       if (streamRef.current) {
@@ -194,7 +201,7 @@ export function useAudioRecorder() {
         speechRecognitionRef.current = null;
       }
     }
-  }, [state.isRecording]);
+  }, []);
 
   const reset = useCallback(() => {
     setState({
