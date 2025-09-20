@@ -34,6 +34,17 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
     enabled: practiceMode === "ai_passage",
   });
 
+  // Handle recorder errors
+  useEffect(() => {
+    if (recorder.error) {
+      toast({
+        title: "Recording Error",
+        description: recorder.error,
+        variant: "destructive",
+      });
+    }
+  }, [recorder.error, toast]);
+
   // Handle analysis when recording stops and we have an audio blob
   useEffect(() => {
     if (recorder.audioBlob && !recorder.isRecording && !isProcessing) {
@@ -84,14 +95,6 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
       });
     }
   };
-
-  if (recorder.error) {
-    toast({
-      title: "Recording Error",
-      description: recorder.error,
-      variant: "destructive",
-    });
-  }
 
   return (
     <Card className="p-8 border border-border" data-testid="recording-interface">
