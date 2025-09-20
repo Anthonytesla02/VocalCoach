@@ -1,0 +1,396 @@
+Vocalize — comprehensive build guide
+
+
+---
+
+1) Product brief — vision & goals
+
+Problem: users feel insecure about how they sound: tone, filler words, pace, energy, clarity; many fear being recorded (camera anxiety).
+Solution (short): an app that gives real-time private feedback during practice sessions plus richer post-session analysis. Real-time “coach” scores filler words, clarity, pace, and energy; sessions can be audio-only or audio+video (camera recording is optional & private). Results are returned as a structured JSON analysis and a friendly UI with exercises, progress tracking, and gamified challenges aimed at younger users.
+
+---
+
+2) Core features (MVP → v1 → later)
+
+MVP (what to build first)
+
+Microphone-based practice session: user clicks “Start”, reads an AI-generated passage or their own text.
+
+Record audio (and optionally video) client-side; show live timer and simple waveform.
+
+Transcribe the recording (server or local ASR).
+
+Detect filler words (explicit tokens like “um”, “uh”, “like” + acoustic detection), count them, timestamp them.
+
+Compute clarity/pacing metrics (words per minute, average pause length), and energy/pitch summary.
+
+Return structured JSON analysis and show a readable report and short tips.
+
+Simple UX: practice button, session history, and one lesson (how to reduce filler words).
+
+
+v1 (after MVP)
+
+Real-time live coach mode (streaming ASR + lightweight in-browser feedback): live counts of fillers, pace gauge.
+
+Video recording mode to let users “practice on camera”; save video to user’s device or encrypted cloud if opted-in.
+
+Warm-up exercises, mic calibration, and breathing/voice exercises.
+
+Gamification: streaks, badges, short challenges.
+
+Personal profile tracking progress (filler reduction trend, pace control, energy).
+
+
+Later / advanced
+
+Personalized AI coach (voice + text), adaptive training plans, social sharing (clips), community challenges, teacher/admin dashboards, support for multiple languages, offline-first mode using on-device ASR (whisper.cpp / WebAssembly).
+
+Detailed prosody correction (intonation coaching) using ML models trained for prosody feedback.
+
+Integrations: Zoom/Teams plugins, calendar reminders, and export of session reports.
+
+
+
+---
+
+3) Key UX flows
+
+Session flow (audio-only)
+
+1. Choose “AI passage” or “My script”.
+
+
+2. (Optional) camera toggle off/on.
+
+
+3. Mic & camera permissions check + mic calibration (playback a test sound).
+
+
+4. Show countdown → record.
+
+
+5. During recording: waveform + optional live hints (if real-time mode enabled).
+
+
+6. Stop → “Processing…” → show visual transcript with filler words highlighted and timestamps, plus JSON export button.
+
+
+
+Session flow (live coaching)
+
+Real-time streaming ASR (websocket). Small websocket messages return updates (filler counts, WPM, energy). Display a small unobtrusive HUD so the user’s flow isn’t broken.
+
+
+Post-session analysis screen
+
+Highlights: filler count & examples, pacing (WPM), percent clarity, energy meter (low/flat/high), longest pause, speaking ratio (speech vs silence).
+
+Actionable tips and 1–3 targeted practice exercises.
+
+“Try again” quick button to record same passage and compare.
+
+
+
+---
+
+4) Data model & JSON analysis schema (example)
+
+Use a single JSON object that includes metadata, timestamps, per-utterance analysis, and global metrics. This JSON is the authoritative analysis that the UI renders.
+
+Example JSON:
+
+{
+  "session_id":"uuid-1234",
+  "user_id":"user-9876",
+  "created_at":"2025-09-20T14:12:09Z",
+  "duration_ms":34210,
+  "media": {
+    "audio_uri":"s3://bucket/session-uuid.wav",
+    "video_uri":"s3://bucket/session-uuid.mp4",
+    "sample_rate":48000
+  },
+  "transcript": [
+    {"start_ms":0,"end_ms":450,"text":"um I think we should...","tokens":[{"t":"um","type":"filler","start_ms":0,"end_ms":120},{"t":"I","type":"word","start_ms":130,"end_ms":160}]},
+    {"start_ms":460,"end_ms":2200,"text":"Today I'll talk about..."}
+  ],
+  "metrics": {
+    "total_words":140,
+    "words_per_minute":123,
+    "total_fillers":9,
+    "fillers_per_minute":15.8,
+    "avg_pause_ms":420,
+    "energy_mean":-18.5,
+    "pitch_median_hz":185,
+    "clarity_score":0.82,
+    "confidence":0.91
+  },
+  "filler_breakdown": {
+    "um":4,"uh":3,"like":2
+  },
+  "highlights":[
+    {"type":"filler","start_ms":0,"end_ms":120,"text":"um"},
+    {"type":"long_pause","start_ms":15000,"end_ms":17000,"duration_ms":2000}
+  ],
+  "recommendations":[
+    {"id":"rec-breathe","text":"Do a 4-6-4 breathing warmup before speaking"},
+    {"id":"rec-pace","text":"Aim for 110-140 WPM for conversational clarity"}
+  ],
+  "version":"vocalize-analysis-v1"
+}
+
+This schema supports export/import, restoring a session, and feeding into gamification/leaderboards.
+
+
+---
+
+5) Technical architecture (high level)
+
+Client (mobile/web) ↔ API Gateway ↔ Backend services
+
+Client (Web/React, React Native/Flutter): capture audio/video, upload or stream to backend, show UI and playback.
+
+Streaming server: WebSocket / gRPC ingress to handle live streaming for realtime feedback.
+
+ASR & transcription: either cloud ASR (Google, Azure, Deepgram, OpenAI) or on-prem / on-device (whisper.cpp) depending on privacy/cost.
+
+Analysis pipeline:
+
+VAD (voice activity detection) → split utterances
+
+ASR transcript (with timestamps if possible)
+
+Filler detection model (token-level + acoustic)
+
+Prosody features extraction (energy RMS, pitch/F0, speaking rate, pause length)
+
+Scoring & rules engine → generate JSON
+
+
+Storage: user media (encrypted at rest), transcripts, analysis JSON, user profile & progress metrics.
+
+Optional ML training infra: aggregated anonymized datasets, model retraining pipelines.
+
+
+Suggested diagram (text):
+
+Clients → (WebRTC / MediaRecorder) → Gateway
+
+Gateway → Streaming ASR (gRPC to STT provider) + Save raw audio to object storage
+
+Audio → Feature extractor (librosa/praat or JS equivalents) → Filler detector & scorer → Analysis JSON → DB
+
+UI reads JSON and displays.
+
+
+
+---
+
+6) Concrete capture & ASR recommendations (with sources)
+
+Browser capture
+
+Use navigator.mediaDevices.getUserMedia() + MediaRecorder for simple recording. For finer control and streaming, use WebRTC + RTCPeerConnection or MediaStream + AudioWorklet for audio processing. MDN MediaRecorder and guides are canonical. 
+
+
+ASR (tradeoffs)
+
+Options: Google Cloud Speech-to-Text (real-time streaming, high accuracy), Microsoft Azure Speech, Deepgram / AssemblyAI, and OpenAI Whisper (models & API).
+
+Google Cloud supports gRPC streaming for live transcription. Good for low-latency streaming. 
+
+OpenAI provides Speech-to-Text API (Whisper family) good for robust multilingual transcription; be aware of “hallucination” risks in some contexts — important for sensitive transcripts. 
+
+
+Recommendation: MVP: start with a cloud ASR that supports streaming (Google Speech or Deepgram) for real-time coach. Offer an opt-in “on-device” whisper.cpp powered option later for privacy/offline.
+
+
+---
+
+7) How to detect filler words, pace, clarity, energy (ML / signal processing)
+
+Filler words detection (two approaches — combine them)
+
+1. Transcript-based detection: look for tokens "um", "uh", "like", "you know", etc. This is straightforward if the ASR outputs these tokens (some ASRs filter/normalise them). But plain token search misses filled pauses that are nonverbal or mis-transcribed.
+
+
+2. Acoustic detection (research-backed): model discrete filler segments from raw audio using a small classifier or sequence tagger trained to detect the acoustic signature of filler words (papers show this is feasible — e.g., Microsoft Research / university papers on filler detection). Combine with forced alignment to get timestamps. 
+
+
+
+Practical: use transcript-based detection first (fast), then run an acoustic filler detector on flagged regions or on the whole audio for higher recall.
+
+Pace & clarity
+
+Words-per-minute (WPM): compute total_words / (duration_minutes).
+
+Avg pause length: use VAD (silence detection) to compute pause durations.
+
+Clarity score: combine metrics: low filler density, stable energy (RMS), limited mumbling (low variance in RMS), WPM in target range — normalized to 0–1.
+
+
+Energy & pitch
+
+Energy: RMS (root mean square) per frame — librosa provides rms and is a good reference for server-side analytics. Use RMS mean/variance across frames to detect monotone/low-energy speech. 
+
+Pitch: autocorrelation or YIN algorithm. JS-based pitch detection exists (autocorrelation implementations such as PitchDetect/cwilso demo) for browser real-time pitch meter. 
+
+
+Forced alignment (optional but useful)
+
+To map transcript tokens to timestamps precisely, use alignment tools (Gentle, aeneas, or any ASR that returns word-level timestamps). This improves per-token feedback.
+
+
+
+---
+
+8) Real-time feedback architecture (low-latency)
+
+Client streams small audio chunks (e.g., 250–500ms) over WebSocket to backend.
+
+Backend routes audio to a streaming ASR and to a lightweight acoustic feature extractor (frames RMS, pitch).
+
+Backend returns periodic updates (e.g., every 1–2s): {wpm:120, fillers:2, energy_avg:-18, suggestion:"Slow down"}.
+
+On client, keep hints minimal and non-distracting — use color-coded HUDs (green/amber/red) and small haptic or subtle animation for youth-friendly feel.
+
+
+
+---
+
+9) Tech stack & libraries (concrete)
+
+Frontend
+
+Web: React + TypeScript. Use AudioWorklet + Web Audio API for real-time processing; MediaRecorder for straightforward recording. (MDN docs). 
+
+Mobile: React Native (fast cross-platform) or Flutter. For native low-latency audio, use native modules (AVFoundation/iOS, AudioRecord/Android).
+
+UI: Tailwind CSS / component library for rapid design.
+
+
+Backend
+
+Realtime ingress: Node.js or Go with WebSocket / gRPC endpoints.
+
+ASR providers: Google Cloud Speech-to-Text (streaming), Azure Speech, AssemblyAI, Deepgram, or OpenAI Speech-to-Text API for batch. Choose one for MVP. 
+
+Audio processing / ML: Python microservices using librosa for RMS and feature extraction, pyannote or custom PyTorch models for filler detection. Use tensorflow / pytorch depending on model choices. librosa docs useful. 
+
+
+On-device / offline options
+
+whisper.cpp (WebAssembly builds) for on-device Whisper inference; whisper.cpp / whisper-web allow privacy-focused offline transcription (work to integrate later). OpenAI/Whisper resources discussed above. 
+
+
+Storage & infra
+
+Object store: AWS S3 (or GCP Cloud Storage), encrypted.
+
+DB: PostgreSQL for user/metadata; vector DB if you use embeddings (e.g., for similar clips).
+
+ML infra: Kubeflow / managed training or simple batch jobs.
+
+Hosting: GCP / AWS / Azure — pick same cloud as major ASR provider to reduce egress and latency.
+
+
+
+---
+
+10) Scoring rubric (example) — how the app grades a session
+
+Create a weighted rubric combining objective and perceptual metrics.
+
+Example weights:
+
+Fillers frequency (30%): normalized score from 0 (many) to 1 (none)
+
+Pace (WPM) (20%): ideal band 110–140 → score 1, else penalty
+
+Clarity (20%): based on energy variance & speech-to-noise ratio
+
+Tone & energy (15%): pitch variance & RMS
+
+Pauses (15%): avoid both extremely short and very long pauses
+
+
+Aggregate into a 0–100 score and show simple badges: “Confident”, “Steady”, “Needs Pacing”.
+
+
+---
+
+11) UX & features to attract young people
+
+Make the app playful, short-session focused, and social-optional:
+
+Short-form daily challenges: 1–2 minute “hot seat” prompts, streaks and time-limited missions.
+
+AR camera modes: friendly filter while practising (cute frames, non-intrusive), easing camera anxiety.
+
+Micro-feedback: small “lantern” or emoji meter showing current energy/pacing.
+
+Clip sharing (opt-in): export short practice clips (5–30s) with overlay of the scores — private by default, share with friends or coaches.
+
+Avatars / coach skins: customizable AI coach persona and voice (text-to-speech).
+
+Progress animation: “before vs after” comparisons with graphs.
+
+Short lessons & streak rewards: reward micro-improvements: “You reduced fillers by 20% this week”.
+
+Peer groups / study-buddies: group practice rooms (audio-only) with curated prompts.
+
+Accessibility & inclusivity: support speech differences and multiple languages.
+
+
+
+---
+
+12) Privacy, security & ethics
+
+Make camera recording opt-in and clearly explain use & retention. Default: do not upload video to server; keep local unless user explicitly uploads.
+
+Encrypt media at rest and in transit (HTTPS + server-side encryption).
+
+Allow users to delete sessions and all derived data easily.
+
+Avoid automatic public sharing. Default to private, and require explicit consent for any sharing.
+
+For ASR providers, note possible hallucinations (e.g., Whisper) — do not use automated transcripts as legal records; warn users. (See reporting on hallucination risks.) 
+
+Have options for on-device transcription for sensitive users.
+
+
+
+---
+
+13) Testing, metrics & KPIs
+
+Quality metrics: ASR word error rate (WER) on sample users; filler detection precision/recall; latency (ms) for live feedback.
+
+Engagement KPIs: Daily Active Users, retention (day 1 / day 7 / day 30), average minutes per session, completion rate for exercises.
+
+Outcome KPIs: average % reduction in fillers over 30 days, % users reporting improved confidence (survey).
+
+A/B test UI nudges (immediate feedback vs delayed) to see what increases practice frequency without inducing anxiety.
+
+---
+
+15) Example snippets & pseudocode
+
+Browser: simple recording and upload (concept)
+
+// 1) get mike
+const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+// 2) record
+const mediaRecorder = new MediaRecorder(stream);
+let chunks = [];
+mediaRecorder.ondataavailable = e => chunks.push(e.data);
+mediaRecorder.onstop = async () => {
+  const blob = new Blob(chunks, { type: 'audio/webm' });
+  // upload blob to server for transcription & analysis
+  await uploadBlob(blob);
+}
+mediaRecorder.start();
+
+(For realtime, use WebSocket + WebAudio ScriptProcessor or AudioWorklet sending audio frames to backend.)
+
