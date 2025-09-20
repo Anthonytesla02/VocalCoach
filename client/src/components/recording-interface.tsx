@@ -51,6 +51,14 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
       setIsProcessing(true);
       const processAnalysis = async () => {
         try {
+          console.log("Starting analysis with:", {
+            hasAudioBlob: !!recorder.audioBlob,
+            userId,
+            practiceMode,
+            transcript: recorder.transcript,
+            duration: recorder.duration
+          });
+          
           const analysis = await uploadAudio(
             recorder.audioBlob!, 
             userId, 
@@ -74,7 +82,7 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
       };
       processAnalysis();
     }
-  }, [recorder.audioBlob, recorder.isRecording]); // Removed isProcessing from deps to prevent infinite loop
+  }, [recorder.audioBlob, recorder.isRecording, userId, practiceMode, recorder.transcript, recorder.duration]);
 
   const handleRecordToggle = async () => {
     if (recorder.isRecording) {
