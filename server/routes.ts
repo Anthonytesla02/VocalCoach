@@ -14,10 +14,44 @@ const upload = multer({
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Initialize demo user
+  app.post("/api/users/init", async (req, res) => {
+    try {
+      const { userId } = req.body;
+      
+      // Check if user already exists
+      const existingUser = await storage.getUser(userId);
+      if (existingUser) {
+        return res.json({ message: "User already exists", user: existingUser });
+      }
+      
+      // Create demo user
+      const user = await storage.createUser({
+        username: userId,
+        password: "demo-password"
+      });
+      
+      res.json({ message: "User created", user });
+    } catch (error) {
+      console.error("Error initializing user:", error);
+      res.status(500).json({ error: "Failed to initialize user" });
+    }
+  });
+  
   // Get user progress
   app.get("/api/users/:userId/progress", async (req, res) => {
     try {
       const { userId } = req.params;
+      
+      // Auto-initialize user if not exists
+      let user = await storage.getUser(userId);
+      if (!user) {
+        user = await storage.createUser({
+          username: userId,
+          password: "demo-password"
+        });
+      }
+      
       const progress = await storage.getUserProgress(userId);
       
       if (!progress) {

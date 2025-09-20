@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,14 +34,19 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
     enabled: practiceMode === "ai_passage",
   });
 
-  const handleRecordToggle = async () => {
-    if (recorder.isRecording) {
-      recorder.stopRecording();
-      
-      if (recorder.audioBlob) {
-        setIsProcessing(true);
+  // Handle analysis when recording stops and we have an audio blob
+  useEffect(() => {
+    if (recorder.audioBlob && !recorder.isRecording && !isProcessing) {
+      setIsProcessing(true);
+      const processAnalysis = async () => {
         try {
-          const analysis = await uploadAudio(recorder.audioBlob, userId, practiceMode);
+          const analysis = await uploadAudio(
+            recorder.audioBlob!, 
+            userId, 
+            practiceMode, 
+            recorder.transcript,
+            recorder.duration * 1000 // Convert seconds to milliseconds
+          );
           onAnalysisComplete(analysis);
           recorder.reset();
         } catch (error) {
@@ -54,7 +59,14 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
         } finally {
           setIsProcessing(false);
         }
-      }
+      };
+      processAnalysis();
+    }
+  }, [recorder.audioBlob, recorder.isRecording, isProcessing]);
+
+  const handleRecordToggle = async () => {
+    if (recorder.isRecording) {
+      recorder.stopRecording();
     } else {
       await recorder.startRecording((data) => {
         setWaveformData(data.map(val => Math.max(20, val / 2.55))); // Convert to percentage

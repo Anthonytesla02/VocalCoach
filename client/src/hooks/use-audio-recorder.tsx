@@ -34,6 +34,7 @@ export function useAudioRecorder() {
   const waveformCallbackRef = useRef<((data: number[]) => void) | null>(null);
   const speechRecognitionRef = useRef<any>(null);
   const transcriptRef = useRef<string>("");
+  const isRecordingRef = useRef<boolean>(false);
 
   const startRecording = useCallback(async (onWaveformData?: (data: number[]) => void) => {
     try {
@@ -108,7 +109,7 @@ export function useAudioRecorder() {
         const dataArray = new Uint8Array(bufferLength);
         
         const updateWaveform = () => {
-          if (analyserRef.current && state.isRecording) {
+          if (analyserRef.current && isRecordingRef.current) {
             analyserRef.current.getByteFrequencyData(dataArray);
             const waveformData = Array.from(dataArray).slice(0, 7);
             onWaveformData(waveformData);
@@ -132,6 +133,7 @@ export function useAudioRecorder() {
       };
 
       mediaRecorder.onstop = () => {
+        isRecordingRef.current = false;
         const audioBlob = new Blob(chunksRef.current, { 
           type: mediaRecorder.mimeType 
         });
@@ -145,6 +147,7 @@ export function useAudioRecorder() {
 
       mediaRecorder.start(1000); // Collect data every second
       
+      isRecordingRef.current = true;
       setState(prev => ({ 
         ...prev, 
         isRecording: true, 
