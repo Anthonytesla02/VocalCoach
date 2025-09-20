@@ -1,9 +1,18 @@
 import { useState, useRef, useCallback } from "react";
 
+// Add Web Speech API types
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
 export interface AudioRecorderState {
   isRecording: boolean;
   duration: number;
   audioBlob: Blob | null;
+  transcript: string;
   error: string | null;
 }
 
@@ -12,6 +21,7 @@ export function useAudioRecorder() {
     isRecording: false,
     duration: 0,
     audioBlob: null,
+    transcript: "",
     error: null,
   });
 
@@ -22,10 +32,13 @@ export function useAudioRecorder() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const waveformCallbackRef = useRef<((data: number[]) => void) | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const transcriptRef = useRef<string>("");
 
   const startRecording = useCallback(async (onWaveformData?: (data: number[]) => void) => {
     try {
-      setState(prev => ({ ...prev, error: null }));
+      setState(prev => ({ ...prev, error: null, transcript: "" }));
+      transcriptRef.current = "";
       
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
@@ -37,6 +50,51 @@ export function useAudioRecorder() {
       
       streamRef.current = stream;
       waveformCallbackRef.current = onWaveformData || null;
+
+      // Initialize Web Speech API
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        
+        recognition.onresult = (event: any) => {
+          let finalTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            }
+          }
+          
+          if (finalTranscript) {
+            transcriptRef.current += finalTranscript;
+            setState(prev => ({ 
+              ...prev, 
+              transcript: transcriptRef.current 
+            }));
+          }
+        };
+        
+        recognition.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error);
+          if (event.error === 'no-speech') {
+            // Continue silently for no-speech errors
+            return;
+          }
+          setState(prev => ({ 
+            ...prev, 
+            error: `Speech recognition error: ${event.error}` 
+          }));
+        };
+        
+        speechRecognitionRef.current = recognition;
+        recognition.start();
+      } else {
+        console.warn('Web Speech API not supported, audio will be recorded without transcription');
+      }
 
       // Set up audio analysis for waveform visualization
       if (onWaveformData) {
@@ -80,7 +138,8 @@ export function useAudioRecorder() {
         setState(prev => ({ 
           ...prev, 
           audioBlob, 
-          isRecording: false 
+          isRecording: false,
+          transcript: transcriptRef.current
         }));
       };
 
@@ -126,6 +185,11 @@ export function useAudioRecorder() {
         audioContextRef.current = null;
         analyserRef.current = null;
       }
+
+      if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.stop();
+        speechRecognitionRef.current = null;
+      }
     }
   }, [state.isRecording]);
 
@@ -134,9 +198,11 @@ export function useAudioRecorder() {
       isRecording: false,
       duration: 0,
       audioBlob: null,
+      transcript: "",
       error: null,
     });
     chunksRef.current = [];
+    transcriptRef.current = "";
   }, []);
 
   return {

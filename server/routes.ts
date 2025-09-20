@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertSessionSchema } from "@shared/schema";
-import { analyzeAudio, transcribeAudio } from "./openai";
+import { analyzeAudio } from "./mistral";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -57,32 +57,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Process audio recording
-  app.post("/api/sessions/analyze", upload.single("audio"), async (req, res) => {
+  // Process transcript from browser speech recognition
+  app.post("/api/sessions/analyze", async (req, res) => {
     try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No audio file provided" });
-      }
-
-      const { userId, practiceMode } = req.body;
+      const { userId, practiceMode, transcript, durationMs } = req.body;
       
-      if (!userId || !practiceMode) {
+      if (!userId || !practiceMode || !transcript || !durationMs) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
-      console.log("Processing audio file:", req.file.filename);
+      console.log("Processing transcript:", transcript.substring(0, 100) + "...");
       
-      // Transcribe audio using OpenAI Whisper
-      const transcriptionResult = await transcribeAudio(req.file.path);
-      
-      // Analyze the transcription
-      const analysis = await analyzeAudio(transcriptionResult.text, transcriptionResult.duration);
+      // Analyze the transcription using Mistral
+      const analysis = await analyzeAudio(transcript, durationMs / 1000);
       
       // Create session record
       const sessionData = {
         userId,
-        durationMs: Math.round(transcriptionResult.duration * 1000),
-        audioUri: req.file.filename,
+        durationMs,
+        audioUri: null, // No audio file since we're using browser speech recognition
         transcript: analysis.transcript,
         metrics: analysis.metrics,
         fillerBreakdown: analysis.fillerBreakdown,
@@ -93,9 +86,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const session = await storage.createSession(sessionData);
-
-      // Clean up uploaded file
-      fs.unlinkSync(req.file.path);
 
       res.json({
         sessionId: session.id,
@@ -109,8 +99,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      console.error("Error analyzing audio:", error);
-      res.status(500).json({ error: "Failed to analyze audio" });
+      console.error("Error analyzing transcript:", error);
+      res.status(500).json({ error: "Failed to analyze transcript" });
     }
   });
 
