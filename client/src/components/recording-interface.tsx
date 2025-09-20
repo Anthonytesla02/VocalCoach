@@ -56,13 +56,14 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
             description: error instanceof Error ? error.message : "Failed to analyze your recording",
             variant: "destructive",
           });
+          recorder.reset(); // Reset on error to prevent loops
         } finally {
           setIsProcessing(false);
         }
       };
       processAnalysis();
     }
-  }, [recorder.audioBlob, recorder.isRecording, isProcessing]);
+  }, [recorder.audioBlob, recorder.isRecording]); // Removed isProcessing from deps to prevent infinite loop
 
   const handleRecordToggle = async () => {
     if (recorder.isRecording) {

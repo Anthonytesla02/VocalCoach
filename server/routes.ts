@@ -94,10 +94,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Process transcript from browser speech recognition
   app.post("/api/sessions/analyze", async (req, res) => {
     try {
+      console.log("Received analysis request:", {
+        hasUserId: !!req.body?.userId,
+        hasPracticeMode: !!req.body?.practiceMode,
+        hasTranscript: !!req.body?.transcript,
+        hasDurationMs: !!req.body?.durationMs,
+        bodyKeys: Object.keys(req.body || {}),
+        body: req.body
+      });
+      
       const { userId, practiceMode, transcript, durationMs } = req.body;
       
-      if (!userId || !practiceMode || !transcript || !durationMs) {
-        return res.status(400).json({ error: "Missing required fields" });
+      if (!userId || !practiceMode) {
+        return res.status(400).json({ error: "Missing userId or practiceMode" });
+      }
+      
+      if (!transcript || transcript.trim() === "") {
+        return res.status(400).json({ error: "No transcript available - speech recognition may have failed" });
+      }
+      
+      if (!durationMs || durationMs < 1000) {
+        return res.status(400).json({ error: "Invalid session duration" });
       }
 
       console.log("Processing transcript:", transcript.substring(0, 100) + "...");
