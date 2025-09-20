@@ -77,7 +77,8 @@ Provide detailed analysis focusing on filler words, speaking pace, clarity, and 
       responseFormat: { type: "json_object" },
     });
 
-    const analysisResult = JSON.parse(response.choices?.[0]?.message?.content || "{}");
+    const content = response.choices?.[0]?.message?.content;
+    const analysisResult = JSON.parse(typeof content === 'string' ? content : "{}");
     
     // Ensure we have all required fields with fallbacks
     return {
