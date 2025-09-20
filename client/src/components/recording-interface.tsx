@@ -70,9 +70,17 @@ export function RecordingInterface({ userId, onAnalysisComplete }: RecordingInte
           recorder.reset();
         } catch (error) {
           console.error("Analysis failed:", error);
+          const errorMessage = error instanceof Error ? error.message : "Failed to analyze your recording";
+          
+          // Show helpful error messages for common issues
+          let description = errorMessage;
+          if (errorMessage.includes("Speech recognition failed")) {
+            description = "Please speak clearly into your microphone and try again. Make sure your browser has microphone permissions enabled.";
+          }
+          
           toast({
             title: "Analysis Failed",
-            description: error instanceof Error ? error.message : "Failed to analyze your recording",
+            description,
             variant: "destructive",
           });
           recorder.reset(); // Reset on error to prevent loops

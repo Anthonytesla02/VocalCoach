@@ -10,43 +10,31 @@ export function calculateWPM(wordCount: number, durationSeconds: number): number
 }
 
 export async function uploadAudio(audioBlob: Blob, userId: string, practiceMode: string, transcript?: string, durationMs?: number) {
-  // If we have a transcript from speech recognition, send it directly
-  if (transcript && transcript.trim()) {
-    const response = await fetch("/api/sessions/analyze", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        userId,
-        practiceMode,
-        transcript: transcript.trim(),
-        durationMs: durationMs || Math.max(1000, audioBlob.size / 100), // Use provided duration or estimate
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "Failed to analyze transcript");
-    }
-
-    return response.json();
+  // Check if we have a valid transcript
+  const hasTranscript = transcript && transcript.trim();
+  
+  if (!hasTranscript) {
+    // If speech recognition failed, throw a helpful error
+    throw new Error("Speech recognition failed or no speech detected. Please try speaking more clearly and ensure your microphone is working.");
   }
 
-  // Fallback to original audio upload method
-  const formData = new FormData();
-  formData.append("audio", audioBlob, "recording.webm");
-  formData.append("userId", userId);
-  formData.append("practiceMode", practiceMode);
-
+  // Send transcript for analysis
   const response = await fetch("/api/sessions/analyze", {
     method: "POST",
-    body: formData,
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId,
+      practiceMode,
+      transcript: transcript.trim(),
+      durationMs: durationMs || Math.max(1000, audioBlob.size / 100), // Use provided duration or estimate
+    }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || "Failed to analyze audio");
+    throw new Error(error.error || "Failed to analyze transcript");
   }
 
   return response.json();
